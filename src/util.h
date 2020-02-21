@@ -64,6 +64,11 @@ int mkdir_p(const char *path, int len, mode_t mode);
 
 size_t mem_cpy(void *dest, size_t dsize, const void *src, size_t ssize, size_t cnt);
 
+struct buffer {
+    unsigned int len;
+    uint8_t *data;
+};
+
 #ifdef __cplusplus
 }
 #endif

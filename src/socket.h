@@ -20,11 +20,7 @@
 #include <arpa/inet.h>
 
 #include "pollable.h"
-
-struct buffer {
-    unsigned int len;
-    uint8_t *data;
-};
+#include "util.h"
 
 class Socket : public Pollable {
 public:
