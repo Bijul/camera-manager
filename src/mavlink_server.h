@@ -25,6 +25,7 @@
 #include "CameraComponent.h"
 #include "conf_file.h"
 #include "socket.h"
+#include "serial.h"
 
 typedef struct image_callback {
     int comp_id;             /* Component ID */
@@ -45,8 +46,12 @@ private:
     bool _is_running;
     unsigned int _timeout_handler;
     UDPSocket _udp;
+    SerialConnection _serial;
+
     struct sockaddr_in _broadcast_addr = {};
     bool _is_sys_id_found;
+    bool _is_serial_connection;
+    struct serial_port _serial_port;
     int _system_id;
     int _comp_id;
     std::map<int, CameraComponent *> compIdToObj;

@@ -26,6 +26,7 @@
 #include "mainloop.h"
 #include "mavlink_server.h"
 #include "util.h"
+#include "serial.h"
 
 using namespace std::placeholders;
 
@@ -39,6 +40,8 @@ static const float epsilon = std::numeric_limits<float>::epsilon();
 
 MavlinkServer::MavlinkServer(const ConfFile &conf)
     : _is_running(false)
+    , _is_serial_connection(false)
+    , _serial_port{}
     , _timeout_handler(0)
     , _broadcast_addr{}
     , _is_sys_id_found(false)
@@ -51,19 +54,34 @@ MavlinkServer::MavlinkServer(const ConfFile &conf)
         int compid;
         char *rtsp_server_addr;
         char broadcast[17];
+        char *serial_port;
+        int serial_baud_rate;
     } opt = {};
     static const ConfFile::OptionsTable option_table[] = {
         {"port", false, ConfFile::parse_ul, OPTIONS_TABLE_STRUCT_FIELD(options, port)},
         {"system_id", false, ConfFile::parse_i, OPTIONS_TABLE_STRUCT_FIELD(options, sysid)},
         {"rtsp_server_addr", false, ConfFile::parse_str_dup, OPTIONS_TABLE_STRUCT_FIELD(options, rtsp_server_addr)},
         {"broadcast_addr", false, ConfFile::parse_str_buf, OPTIONS_TABLE_STRUCT_FIELD(options, broadcast)},
+        {"serial_port", false,  ConfFile::parse_str_dup, OPTIONS_TABLE_STRUCT_FIELD(options, serial_port)},
+        {"serial_baud_rate", false,  ConfFile::parse_i, OPTIONS_TABLE_STRUCT_FIELD(options, serial_baud_rate)},
     };
     conf.extract_options("mavlink", option_table, ARRAY_SIZE(option_table), (void *)&opt);
 
-    if (opt.port)
-        _broadcast_addr.sin_port = htons(opt.port);
-    else
-        _broadcast_addr.sin_port = htons(DEFAULT_MAVLINK_PORT);
+    if (opt.serial_port[0]) {
+        _is_serial_connection = true;
+        _serial_port = {opt.serial_port, opt.serial_baud_rate};
+    } else {
+        if (opt.port)
+            _broadcast_addr.sin_port = htons(opt.port);
+        else
+            _broadcast_addr.sin_port = htons(DEFAULT_MAVLINK_PORT);
+
+        if (opt.broadcast[0])
+            _broadcast_addr.sin_addr.s_addr = inet_addr(opt.broadcast);
+        else
+            _broadcast_addr.sin_addr.s_addr = inet_addr(DEFAULT_MAVLINK_BROADCAST_ADDR);
+        _broadcast_addr.sin_family = AF_INET;
+    }
 
     if (opt.sysid) {
         if (opt.sysid > 0 && opt.sysid < 255) {
@@ -79,12 +97,6 @@ MavlinkServer::MavlinkServer(const ConfFile &conf)
     } else {
         log_info("Use System ID %d, till heartbeat received from Vehicle", DEFAULT_SYSTEM_ID);
     }
-
-    if (opt.broadcast[0])
-        _broadcast_addr.sin_addr.s_addr = inet_addr(opt.broadcast);
-    else
-        _broadcast_addr.sin_addr.s_addr = inet_addr(DEFAULT_MAVLINK_BROADCAST_ADDR);
-    _broadcast_addr.sin_family = AF_INET;
 }
 
 MavlinkServer::~MavlinkServer()
@@ -671,10 +683,17 @@ void MavlinkServer::start()
         return;
     _is_running = true;
 
-    _udp.open(true);
-    _udp.set_read_callback([this](const struct buffer &buf, const struct sockaddr_in &sockaddr) {
-        this->_message_received(sockaddr, buf);
-    });
+    if (_is_serial_connection) {
+        _serial.open(_serial_port);
+        _serial.set_read_callback([this](const struct buffer &buf) {
+            this->_message_received(sockaddr_in{}, buf);
+        });
+    } else {
+        _udp.open(true);
+        _udp.set_read_callback([this](const struct buffer &buf, const struct sockaddr_in &sockaddr) {
+            this->_message_received(sockaddr, buf);
+        });
+    }
     _timeout_handler = Mainloop::get_mainloop()->add_timeout(1000, _heartbeat_cb, this);
 }
 
