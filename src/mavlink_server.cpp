@@ -25,14 +25,13 @@
 #include "log.h"
 #include "mainloop.h"
 #include "mavlink_server.h"
-#include "util.h"
 #include "serial.h"
+#include "util.h"
 
 using namespace std::placeholders;
 
 #define DEFAULT_MAVLINK_PORT 14550
 #define DEFAULT_MAVLINK_BROADCAST_ADDR "255.255.255.255"
-#define DEFAULT_RTSP_SERVER_ADDR "0.0.0.0"
 #define MAX_MAVLINK_MESSAGE_SIZE 1024
 #define DEFAULT_SYSTEM_ID 1
 
@@ -43,7 +42,6 @@ MavlinkServer::MavlinkServer(const ConfFile &conf)
     , _is_serial_connection(false)
     , _serial_port{}
     , _timeout_handler(0)
-    , _broadcast_addr{}
     , _is_sys_id_found(false)
     , _system_id(DEFAULT_SYSTEM_ID)
     , _comp_id(MAV_COMP_ID_CAMERA)
@@ -52,36 +50,20 @@ MavlinkServer::MavlinkServer(const ConfFile &conf)
         unsigned long int port;
         int sysid;
         int compid;
-        char *rtsp_server_addr;
         char broadcast[17];
         char *serial_port;
         int serial_baud_rate;
     } opt = {};
     static const ConfFile::OptionsTable option_table[] = {
-        {"port", false, ConfFile::parse_ul, OPTIONS_TABLE_STRUCT_FIELD(options, port)},
         {"system_id", false, ConfFile::parse_i, OPTIONS_TABLE_STRUCT_FIELD(options, sysid)},
-        {"rtsp_server_addr", false, ConfFile::parse_str_dup, OPTIONS_TABLE_STRUCT_FIELD(options, rtsp_server_addr)},
-        {"broadcast_addr", false, ConfFile::parse_str_buf, OPTIONS_TABLE_STRUCT_FIELD(options, broadcast)},
-        {"serial_port", false,  ConfFile::parse_str_dup, OPTIONS_TABLE_STRUCT_FIELD(options, serial_port)},
-        {"serial_baud_rate", false,  ConfFile::parse_i, OPTIONS_TABLE_STRUCT_FIELD(options, serial_baud_rate)},
+        {"serial_port", false, ConfFile::parse_str_dup,
+         OPTIONS_TABLE_STRUCT_FIELD(options, serial_port)},
+        {"serial_baud_rate", false, ConfFile::parse_i,
+         OPTIONS_TABLE_STRUCT_FIELD(options, serial_baud_rate)},
     };
     conf.extract_options("mavlink", option_table, ARRAY_SIZE(option_table), (void *)&opt);
 
-    if (opt.serial_port[0]) {
-        _is_serial_connection = true;
-        _serial_port = {opt.serial_port, opt.serial_baud_rate};
-    } else {
-        if (opt.port)
-            _broadcast_addr.sin_port = htons(opt.port);
-        else
-            _broadcast_addr.sin_port = htons(DEFAULT_MAVLINK_PORT);
-
-        if (opt.broadcast[0])
-            _broadcast_addr.sin_addr.s_addr = inet_addr(opt.broadcast);
-        else
-            _broadcast_addr.sin_addr.s_addr = inet_addr(DEFAULT_MAVLINK_BROADCAST_ADDR);
-        _broadcast_addr.sin_family = AF_INET;
-    }
+    _serial_port = {opt.serial_port, opt.serial_baud_rate};
 
     if (opt.sysid) {
         if (opt.sysid > 0 && opt.sysid < 255) {
@@ -104,7 +86,7 @@ MavlinkServer::~MavlinkServer()
     stop();
 }
 
-void MavlinkServer::_send_ack(const struct sockaddr_in &addr, int cmd, int comp_id, bool success)
+void MavlinkServer::_send_ack(int cmd, int comp_id, bool success)
 {
     mavlink_message_t msg;
 
@@ -113,14 +95,13 @@ void MavlinkServer::_send_ack(const struct sockaddr_in &addr, int cmd, int comp_
         success /*result*/ ? MAV_RESULT_ACCEPTED : MAV_RESULT_FAILED, 0 /*progress*/,
         0 /*result_param2*/, 0 /*target_system*/, 255 /*target_component*/);
 
-    if (!_send_mavlink_message(&addr, msg)) {
+    if (!_send_mavlink_message(msg)) {
         log_error("Sending ack failed.");
         return;
     }
 }
 
-void MavlinkServer::_handle_request_camera_information(const struct sockaddr_in &addr,
-                                                       mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_request_camera_information(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
@@ -130,7 +111,7 @@ void MavlinkServer::_handle_request_camera_information(const struct sockaddr_in 
     // Take no action if flag not set
     if (std::abs(cmd.param1) <= epsilon) {
         log_warning("No Action");
-        _send_ack(addr, cmd.command, cmd.target_component, true);
+        _send_ack(cmd.command, cmd.target_component, true);
         return;
     }
 
@@ -144,7 +125,7 @@ void MavlinkServer::_handle_request_camera_information(const struct sockaddr_in 
             camInfo.resolution_v, camInfo.lens_id, camInfo.flags, camInfo.cam_definition_version,
             (const char *)camInfo.cam_definition_uri);
 
-        if (!_send_mavlink_message(&addr, msg)) {
+        if (!_send_mavlink_message(msg)) {
             log_error("Sending camera information failed for camera %d.", cmd.target_component);
             return;
         }
@@ -152,18 +133,17 @@ void MavlinkServer::_handle_request_camera_information(const struct sockaddr_in 
         success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_request_camera_settings(const struct sockaddr_in &addr,
-                                                    mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_request_camera_settings(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
     // Take no action if flag not set
     if (std::abs(cmd.param1) <= epsilon) {
         log_warning("No Action");
-        _send_ack(addr, cmd.command, cmd.target_component, true);
+        _send_ack(cmd.command, cmd.target_component, true);
         return;
     }
 
@@ -173,10 +153,10 @@ void MavlinkServer::_handle_request_camera_settings(const struct sockaddr_in &ad
     CameraComponent *tgtComp = getCameraComponent(cmd.target_component);
     if (tgtComp) {
         mavlink_msg_camera_settings_pack(_system_id, cmd.target_component, &msg, 0,
-                                         dcm2mavCameraMode(tgtComp->getCameraMode()),
-                                         NAN, NAN); // zoom level is unknown
+                                         dcm2mavCameraMode(tgtComp->getCameraMode()), NAN,
+                                         NAN); // zoom level is unknown
 
-        if (!_send_mavlink_message(&addr, msg)) {
+        if (!_send_mavlink_message(msg)) {
             log_error("Sending camera setting failed for camera %d.", cmd.target_component);
             return;
         }
@@ -184,18 +164,17 @@ void MavlinkServer::_handle_request_camera_settings(const struct sockaddr_in &ad
         success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_request_storage_information(const struct sockaddr_in &addr,
-                                                        mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_request_storage_information(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
     // Take no action if flag not set
     if (std::abs(cmd.param2) <= epsilon) {
         log_warning("No Action");
-        _send_ack(addr, cmd.command, cmd.target_component, true);
+        _send_ack(cmd.command, cmd.target_component, true);
         return;
     }
 
@@ -212,7 +191,7 @@ void MavlinkServer::_handle_request_storage_information(const struct sockaddr_in
                                              storeInfo.used_capacity, storeInfo.available_capacity,
                                              storeInfo.read_speed, storeInfo.write_speed);
 
-        if (!_send_mavlink_message(&addr, msg)) {
+        if (!_send_mavlink_message(msg)) {
             log_error("Sending storage information failed for camera %d.", cmd.target_component);
             return;
         }
@@ -220,11 +199,10 @@ void MavlinkServer::_handle_request_storage_information(const struct sockaddr_in
         success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_set_camera_mode(const struct sockaddr_in &addr,
-                                                        mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_set_camera_mode(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
@@ -236,12 +214,10 @@ void MavlinkServer::_handle_set_camera_mode(const struct sockaddr_in &addr,
             success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
-
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_image_start_capture(const struct sockaddr_in &addr,
-                                                mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_image_start_capture(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
     bool success = false;
@@ -250,18 +226,16 @@ void MavlinkServer::_handle_image_start_capture(const struct sockaddr_in &addr,
     CameraComponent *tgtComp = getCameraComponent(cmd.target_component);
     if (tgtComp) {
         cb_data.comp_id = cmd.target_component;
-        cb_data.addr = addr;
         if (!tgtComp->startImageCapture(
                 (uint32_t)cmd.param2 /*interval*/, (uint32_t)cmd.param3 /*count*/,
                 std::bind(&MavlinkServer::_image_captured_cb, this, cb_data, _1, _2)))
             success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_image_stop_capture(const struct sockaddr_in &addr,
-                                               mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_image_stop_capture(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
@@ -273,7 +247,7 @@ void MavlinkServer::_handle_image_stop_capture(const struct sockaddr_in &addr,
             success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
 void MavlinkServer::_image_captured_cb(image_callback_t cb_data, int result, int seq_num)
@@ -289,16 +263,15 @@ void MavlinkServer::_image_captured_cb(image_callback_t cb_data, int result, int
         0 /*lat*/, 0 /*lon*/, 0 /*alt*/, 0 /*relative_alt*/, q, seq_num /*image_index*/,
         success /*capture_result*/, 0 /*file_url*/);
 
-    if (!_send_mavlink_message(&cb_data.addr, msg)) {
+    if (!_send_mavlink_message(msg)) {
         log_error("Sending camera image captured failed for camera %d.", cb_data.comp_id);
         return;
     }
 
-    _send_camera_capture_status(cb_data.comp_id, cb_data.addr);
+    _send_camera_capture_status(cb_data.comp_id);
 }
 
-void MavlinkServer::_handle_video_start_capture(const struct sockaddr_in &addr,
-                                                mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_video_start_capture(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
     bool success = false;
@@ -307,16 +280,14 @@ void MavlinkServer::_handle_video_start_capture(const struct sockaddr_in &addr,
     CameraComponent *tgtComp = getCameraComponent(cmd.target_component);
     if (tgtComp) {
         cb_data.comp_id = cmd.target_component;
-        memcpy(&cb_data.addr, &addr, sizeof(struct sockaddr_in));
         if (!tgtComp->startVideoCapture((uint32_t)cmd.param2 /*camera_Capture_status freq*/))
             success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_video_stop_capture(const struct sockaddr_in &addr,
-                                               mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_video_stop_capture(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
@@ -328,28 +299,26 @@ void MavlinkServer::_handle_video_stop_capture(const struct sockaddr_in &addr,
             success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_request_camera_capture_status(const struct sockaddr_in &addr,
-                                                          mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_request_camera_capture_status(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
     // Take no action if flag not set
     if (std::abs(cmd.param1) <= epsilon) {
         log_warning("No Action");
-        _send_ack(addr, cmd.command, cmd.target_component, true);
+        _send_ack(cmd.command, cmd.target_component, true);
         return;
     }
 
-    bool success = _send_camera_capture_status(cmd.target_component, addr);
+    bool success = _send_camera_capture_status(cmd.target_component);
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
 
-void MavlinkServer::_handle_param_ext_request_read(const struct sockaddr_in &addr,
-                                                   mavlink_message_t *msg)
+void MavlinkServer::_handle_param_ext_request_read(mavlink_message_t *msg)
 {
     log_debug("%s", __func__);
 
@@ -388,15 +357,14 @@ void MavlinkServer::_handle_param_ext_request_read(const struct sockaddr_in &add
             mavlink_msg_param_ext_ack_encode(_system_id, param_ext_read.target_component, &msg2,
                                              &param_ext_ack);
         }
-        if (!_send_mavlink_message(&addr, msg2)) {
+        if (!_send_mavlink_message(msg2)) {
             log_error("Sending response to param request read failed %d.",
                       param_ext_read.target_component);
             return;
         }
     }
 }
-void MavlinkServer::_handle_param_ext_request_list(const struct sockaddr_in &addr,
-                                                   mavlink_message_t *msg)
+void MavlinkServer::_handle_param_ext_request_list(mavlink_message_t *msg)
 {
     log_debug("%s", __func__);
 
@@ -423,14 +391,14 @@ void MavlinkServer::_handle_param_ext_request_list(const struct sockaddr_in &add
             param_ext_value.param_type = tgtComp->getParamType(x.first.c_str(), x.first.size());
             mavlink_msg_param_ext_value_encode(_system_id, param_list.target_component, &msg2,
                                                &param_ext_value);
-            if (!_send_mavlink_message(&addr, msg2)) {
+            if (!_send_mavlink_message(msg2)) {
                 log_error("Sending response to param request list failed %d.", idx);
             }
         }
     }
 }
 
-void MavlinkServer::_handle_param_ext_set(const struct sockaddr_in &addr, mavlink_message_t *msg)
+void MavlinkServer::_handle_param_ext_set(mavlink_message_t *msg)
 {
     log_debug("%s", __func__);
 
@@ -465,22 +433,21 @@ void MavlinkServer::_handle_param_ext_set(const struct sockaddr_in &addr, mavlin
 
         mavlink_msg_param_ext_ack_encode(_system_id, param_set.target_component, &msg2,
                                          &param_ext_ack);
-        if (!_send_mavlink_message(&addr, msg2)) {
+        if (!_send_mavlink_message(msg2)) {
             log_error("Sending response to param set failed %d.", param_set.target_component);
             return;
         }
     }
 }
 
-void MavlinkServer::_handle_reset_camera_settings(const struct sockaddr_in &addr,
-                                                  mavlink_command_long_t &cmd)
+void MavlinkServer::_handle_reset_camera_settings(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
 
     // Take no action if flag not set
     if (std::abs(cmd.param1) <= epsilon) {
         log_warning("No Action");
-        _send_ack(addr, cmd.command, cmd.target_component, true);
+        _send_ack(cmd.command, cmd.target_component, true);
         return;
     }
 
@@ -492,9 +459,9 @@ void MavlinkServer::_handle_reset_camera_settings(const struct sockaddr_in &addr
             success = true;
     }
 
-    _send_ack(addr, cmd.command, cmd.target_component, success);
+    _send_ack(cmd.command, cmd.target_component, success);
 }
-void MavlinkServer::_handle_heartbeat(const struct sockaddr_in &addr, mavlink_message_t *msg)
+void MavlinkServer::_handle_heartbeat(mavlink_message_t *msg)
 {
     mavlink_heartbeat_t heartbeat;
     mavlink_msg_heartbeat_decode(msg, &heartbeat);
@@ -508,7 +475,7 @@ void MavlinkServer::_handle_heartbeat(const struct sockaddr_in &addr, mavlink_me
     }
 }
 
-void MavlinkServer::_handle_mavlink_message(const struct sockaddr_in &addr, mavlink_message_t *msg)
+void MavlinkServer::_handle_mavlink_message(mavlink_message_t *msg)
 {
     // log_debug("Message received: (sysid: %d compid: %d msgid: %d)", msg->sysid, msg->compid,
     //          msg->msgid);
@@ -528,43 +495,43 @@ void MavlinkServer::_handle_mavlink_message(const struct sockaddr_in &addr, mavl
 
         switch (cmd.command) {
         case MAV_CMD_REQUEST_CAMERA_INFORMATION:
-            this->_handle_request_camera_information(addr, cmd);
+            this->_handle_request_camera_information(cmd);
             break;
         case MAV_CMD_REQUEST_VIDEO_STREAM_INFORMATION:
             break;
         case MAV_CMD_REQUEST_CAMERA_SETTINGS:
-            this->_handle_request_camera_settings(addr, cmd);
+            this->_handle_request_camera_settings(cmd);
             break;
         case MAV_CMD_REQUEST_CAMERA_CAPTURE_STATUS:
-            this->_handle_request_camera_capture_status(addr, cmd);
+            this->_handle_request_camera_capture_status(cmd);
             break;
         case MAV_CMD_RESET_CAMERA_SETTINGS:
-            this->_handle_reset_camera_settings(addr, cmd);
+            this->_handle_reset_camera_settings(cmd);
             break;
         case MAV_CMD_REQUEST_STORAGE_INFORMATION:
-            this->_handle_request_storage_information(addr, cmd);
+            this->_handle_request_storage_information(cmd);
             break;
         case MAV_CMD_STORAGE_FORMAT:
             log_debug("MAV_CMD_STORAGE_FORMAT");
             break;
         case MAV_CMD_SET_CAMERA_MODE:
-            this->_handle_set_camera_mode(addr, cmd);
+            this->_handle_set_camera_mode(cmd);
             break;
         case MAV_CMD_IMAGE_START_CAPTURE:
             log_debug("MAV_CMD_IMAGE_START_CAPTURE");
-            this->_handle_image_start_capture(addr, cmd);
+            this->_handle_image_start_capture(cmd);
             break;
         case MAV_CMD_IMAGE_STOP_CAPTURE:
             log_debug("MAV_CMD_IMAGE_STOP_CAPTURE");
-            this->_handle_image_stop_capture(addr, cmd);
+            this->_handle_image_stop_capture(cmd);
             break;
         case MAV_CMD_VIDEO_START_CAPTURE:
             log_debug("MAV_CMD_VIDEO_START_CAPTURE");
-            this->_handle_video_start_capture(addr, cmd);
+            this->_handle_video_start_capture(cmd);
             break;
         case MAV_CMD_VIDEO_STOP_CAPTURE:
             log_debug("MAV_CMD_VIDEO_STOP_CAPTURE");
-            this->_handle_video_stop_capture(addr, cmd);
+            this->_handle_video_stop_capture(cmd);
             break;
         case MAV_CMD_REQUEST_CAMERA_IMAGE_CAPTURE:
         case MAV_CMD_DO_TRIGGER_CONTROL:
@@ -578,16 +545,16 @@ void MavlinkServer::_handle_mavlink_message(const struct sockaddr_in &addr, mavl
         switch (msg->msgid) {
         case MAVLINK_MSG_ID_HEARTBEAT:
             if (!_is_sys_id_found)
-                this->_handle_heartbeat(addr, msg);
+                this->_handle_heartbeat(msg);
             break;
         case MAVLINK_MSG_ID_PARAM_EXT_REQUEST_READ:
-            this->_handle_param_ext_request_read(addr, msg);
+            this->_handle_param_ext_request_read(msg);
             break;
         case MAVLINK_MSG_ID_PARAM_EXT_REQUEST_LIST:
-            this->_handle_param_ext_request_list(addr, msg);
+            this->_handle_param_ext_request_list(msg);
             break;
         case MAVLINK_MSG_ID_PARAM_EXT_SET:
-            this->_handle_param_ext_set(addr, msg);
+            this->_handle_param_ext_set(msg);
             break;
         default:
             // log_debug("Message %d unhandled, Discarding", msg->msgid);
@@ -596,19 +563,19 @@ void MavlinkServer::_handle_mavlink_message(const struct sockaddr_in &addr, mavl
     }
 }
 
-void MavlinkServer::_message_received(const struct sockaddr_in &sockaddr, const struct buffer &buf)
+void MavlinkServer::_message_received(const struct buffer &buf)
 {
     mavlink_message_t msg;
     mavlink_status_t status;
 
     for (unsigned int i = 0; i < buf.len; ++i) {
-        //TOOD: Parse mavlink message all at once, instead of using mavlink_parse_char
+        // TOOD: Parse mavlink message all at once, instead of using mavlink_parse_char
         if (mavlink_parse_char(MAVLINK_COMM_0, buf.data[i], &msg, &status))
-            _handle_mavlink_message(sockaddr, &msg);
+            _handle_mavlink_message(&msg);
     }
 }
 
-bool MavlinkServer::_send_camera_capture_status(int compid, const struct sockaddr_in &addr)
+bool MavlinkServer::_send_camera_capture_status(int compid)
 {
     log_debug("%s", __func__);
 
@@ -630,7 +597,7 @@ bool MavlinkServer::_send_camera_capture_status(int compid, const struct sockadd
                                                video_status, static_cast<float>(image_interval),
                                                recording_time_ms,
                                                static_cast<float>(available_capacity));
-        if (!_send_mavlink_message(&addr, msg)) {
+        if (!_send_mavlink_message(msg)) {
             log_error("Sending camera setting failed for camera %d.", compid);
             return false;
         }
@@ -641,16 +608,14 @@ bool MavlinkServer::_send_camera_capture_status(int compid, const struct sockadd
     return success;
 }
 
-bool MavlinkServer::_send_mavlink_message(const struct sockaddr_in *addr, mavlink_message_t &msg)
+bool MavlinkServer::_send_mavlink_message(mavlink_message_t &msg)
 {
     uint8_t buffer[MAX_MAVLINK_MESSAGE_SIZE];
     struct buffer buf = {0, buffer};
 
     buf.len = mavlink_msg_to_send_buffer(buf.data, &msg);
 
-    if (addr)
-        return buf.len > 0 && _udp.write(buf, *addr) > 0;
-    return buf.len > 0 && _udp.write(buf, _broadcast_addr) > 0;
+    return buf.len > 0 && _serial.write(buf) > 0;
 }
 
 bool _heartbeat_cb(void *data)
@@ -670,7 +635,7 @@ bool _heartbeat_cb(void *data)
                   server->_system_id);*/
         mavlink_msg_heartbeat_pack(server->_system_id, it->first, &msg, MAV_TYPE_GENERIC,
                                    MAV_AUTOPILOT_INVALID, MAV_MODE_PREFLIGHT, 0, MAV_STATE_ACTIVE);
-        if (!server->_send_mavlink_message(nullptr, msg))
+        if (!server->_send_mavlink_message(msg))
             log_error("Sending HEARTBEAT failed.");
     }
     return true;
@@ -683,17 +648,8 @@ void MavlinkServer::start()
         return;
     _is_running = true;
 
-    if (_is_serial_connection) {
-        _serial.open(_serial_port);
-        _serial.set_read_callback([this](const struct buffer &buf) {
-            this->_message_received(sockaddr_in{}, buf);
-        });
-    } else {
-        _udp.open(true);
-        _udp.set_read_callback([this](const struct buffer &buf, const struct sockaddr_in &sockaddr) {
-            this->_message_received(sockaddr, buf);
-        });
-    }
+    _serial.open(_serial_port);
+    _serial.set_read_callback([this](const struct buffer &buf) { this->_message_received(buf); });
     _timeout_handler = Mainloop::get_mainloop()->add_timeout(1000, _heartbeat_cb, this);
 }
 

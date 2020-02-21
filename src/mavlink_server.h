@@ -29,7 +29,6 @@
 
 typedef struct image_callback {
     int comp_id;             /* Component ID */
-    struct sockaddr_in addr; /* Requester address */
 } image_callback_t;
 
 class MavlinkServer {
@@ -45,10 +44,7 @@ public:
 private:
     bool _is_running;
     unsigned int _timeout_handler;
-    UDPSocket _udp;
     SerialConnection _serial;
-
-    struct sockaddr_in _broadcast_addr = {};
     bool _is_sys_id_found;
     bool _is_serial_connection;
     struct serial_port _serial_port;
@@ -56,31 +52,26 @@ private:
     int _comp_id;
     std::map<int, CameraComponent *> compIdToObj;
 
-    void _message_received(const struct sockaddr_in &sockaddr, const struct buffer &buf);
-    void _handle_mavlink_message(const struct sockaddr_in &addr, mavlink_message_t *msg);
-    void _handle_request_camera_information(const struct sockaddr_in &addr,
-                                            mavlink_command_long_t &cmd);
-    void _handle_request_camera_settings(const struct sockaddr_in &addr,
-                                         mavlink_command_long_t &cmd);
-    void _handle_request_storage_information(const struct sockaddr_in &addr,
-                                             mavlink_command_long_t &cmd);
-    void _handle_set_camera_mode(const struct sockaddr_in &addr,
-                                                        mavlink_command_long_t &cmd);
-    void _handle_image_start_capture(const struct sockaddr_in &addr, mavlink_command_long_t &cmd);
-    void _handle_image_stop_capture(const struct sockaddr_in &addr, mavlink_command_long_t &cmd);
-    void _handle_video_start_capture(const struct sockaddr_in &addr, mavlink_command_long_t &cmd);
-    void _handle_video_stop_capture(const struct sockaddr_in &addr, mavlink_command_long_t &cmd);
+    void _message_received(const struct buffer &buf);
+    void _handle_mavlink_message(mavlink_message_t *msg);
+    void _handle_request_camera_information(mavlink_command_long_t &cmd);
+    void _handle_request_camera_settings(mavlink_command_long_t &cmd);
+    void _handle_request_storage_information(mavlink_command_long_t &cmd);
+    void _handle_set_camera_mode(mavlink_command_long_t &cmd);
+    void _handle_image_start_capture(mavlink_command_long_t &cmd);
+    void _handle_image_stop_capture(mavlink_command_long_t &cmd);
+    void _handle_video_start_capture(mavlink_command_long_t &cmd);
+    void _handle_video_stop_capture(mavlink_command_long_t &cmd);
     void _image_captured_cb(image_callback_t cb_data, int result, int seq_num);
-    void _handle_request_camera_capture_status(const struct sockaddr_in &addr,
-                                               mavlink_command_long_t &cmd);
-    void _handle_param_ext_request_read(const struct sockaddr_in &addr, mavlink_message_t *msg);
-    void _handle_param_ext_request_list(const struct sockaddr_in &addr, mavlink_message_t *msg);
-    void _handle_param_ext_set(const struct sockaddr_in &addr, mavlink_message_t *msg);
-    void _handle_reset_camera_settings(const struct sockaddr_in &addr, mavlink_command_long_t &cmd);
-    void _handle_heartbeat(const struct sockaddr_in &addr, mavlink_message_t *msg);
-    bool _send_camera_capture_status(int compid, const struct sockaddr_in &addr);
-    bool _send_mavlink_message(const struct sockaddr_in *addr, mavlink_message_t &msg);
-    void _send_ack(const struct sockaddr_in &addr, int cmd, int comp_id, bool success);
+    void _handle_request_camera_capture_status(mavlink_command_long_t &cmd);
+    void _handle_param_ext_request_read(mavlink_message_t *msg);
+    void _handle_param_ext_request_list(mavlink_message_t *msg);
+    void _handle_param_ext_set(mavlink_message_t *msg);
+    void _handle_reset_camera_settings(mavlink_command_long_t &cmd);
+    void _handle_heartbeat(mavlink_message_t *msg);
+    bool _send_camera_capture_status(int compid);
+    bool _send_mavlink_message(mavlink_message_t &msg);
+    void _send_ack(int cmd, int comp_id, bool success);
 #if 0
     const Stream::FrameSize *_find_best_frame_size(Stream &s, uint32_t w, uint32_t v);
 #endif
