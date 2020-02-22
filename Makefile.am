@@ -131,6 +131,8 @@ BASE_FILES = \
 	src/pollable.h \
 	src/socket.cpp \
 	src/socket.h \
+	src/serial.cpp \
+	src/serial.h \
 	src/util.c \
 	src/util.h \
 	src/CameraParameters.cpp \
@@ -284,6 +286,8 @@ test_test_mavlink_protocol_SOURCES = \
         src/pollable.h \
         src/socket.cpp \
         src/socket.h \
+		src/serial.cpp \
+		src/serial.h \
         src/util.c \
         src/util.h
 

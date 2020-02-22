@@ -39,7 +39,6 @@ static const float epsilon = std::numeric_limits<float>::epsilon();
 
 MavlinkServer::MavlinkServer(const ConfFile &conf)
     : _is_running(false)
-    , _is_serial_connection(false)
     , _serial_port{}
     , _timeout_handler(0)
     , _is_sys_id_found(false)
@@ -275,11 +274,9 @@ void MavlinkServer::_handle_video_start_capture(mavlink_command_long_t &cmd)
 {
     log_debug("%s", __func__);
     bool success = false;
-    image_callback_t cb_data;
 
     CameraComponent *tgtComp = getCameraComponent(cmd.target_component);
     if (tgtComp) {
-        cb_data.comp_id = cmd.target_component;
         if (!tgtComp->startVideoCapture((uint32_t)cmd.param2 /*camera_Capture_status freq*/))
             success = true;
     }

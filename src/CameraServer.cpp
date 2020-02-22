@@ -86,7 +86,7 @@ CameraServer::CameraServer(const ConfFile &conf)
         device->setCameraDefinitionUri(readURI(conf, confDeviceId));
 
         // Set the GStreamer RTSP pipeline from conf file
-        device->setGstRTSPPipeline(readRTSPPipeline(conf, confDeviceId));
+        // device->setGstRTSPPipeline(readRTSPPipeline(conf, confDeviceId));
 
         // create camera component with camera device
         CameraComponent *comp = new CameraComponent(device);
@@ -134,8 +134,8 @@ void CameraServer::start()
     for (auto camComp : compList) {
         if (camComp->start())
             log_error("Error in starting camera component");
-
-        camComp->startVideoStream(false);
+        
+        // camComp->startVideoStream(false);
     }
 
 #ifdef ENABLE_MAVLINK
@@ -169,7 +169,7 @@ void CameraServer::stop()
 #endif
 
     for (auto camComp : compList) {
-        camComp->stopVideoStream();
+        // camComp->stopVideoStream();
         camComp->stop();
     }
 

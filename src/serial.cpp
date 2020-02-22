@@ -16,6 +16,8 @@
  * limitations under the License.
  */
 
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -116,8 +118,6 @@ void SerialConnection::close()
 
 int SerialConnection::open(struct serial_port sp)
 {
-    const int broadcast_val = 1;
-
     _serial_port = sp;
 
     // wait for serial port to be initialized
@@ -129,11 +129,6 @@ int SerialConnection::open(struct serial_port sp)
 
     if (_fd == -1) {
         log_error("Could not create socket (%m)");
-        return -1;
-    }
-
-    if (fcntl(_fd, F_SETFL, 0) == -1) {
-        log_error("fcntl failed: (%m)");
         return -1;
     }
 
@@ -157,13 +152,13 @@ int SerialConnection::open(struct serial_port sp)
 
     tc.c_cflag |= CLOCAL; // Without this a write() blocks indefinitely.
 
-    if (cfsetispeed(&tc, _serial_port.baud_rate) != 0) {
+    if (cfsetispeed(&tc, B57600) != 0) {
         log_error("cfsetispeed failed: (%m)");
         close();
         return -1;
     }
 
-    if (cfsetospeed(&tc, _serial_port.baud_rate) != 0) {
+    if (cfsetospeed(&tc, B57600) != 0) {
         log_error("cfsetospeed failed: (%m)");
         close();
         return -1;

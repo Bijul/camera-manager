@@ -43,11 +43,10 @@ public:
 
 private:
     bool _is_running;
+    struct serial_port _serial_port;
     unsigned int _timeout_handler;
     SerialConnection _serial;
     bool _is_sys_id_found;
-    bool _is_serial_connection;
-    struct serial_port _serial_port;
     int _system_id;
     int _comp_id;
     std::map<int, CameraComponent *> compIdToObj;
