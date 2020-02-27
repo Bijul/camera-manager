@@ -480,7 +480,7 @@ void MavlinkServer::_handle_mavlink_message(mavlink_message_t *msg)
     if (msg->msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
         mavlink_command_long_t cmd;
         mavlink_msg_command_long_decode(msg, &cmd);
-        log_debug("Command received: (sysid: %d compid: %d msgid: %d)", cmd.target_system,
+        log_info("Command received: (sysid: %d compid: %d msgid: %d)", cmd.target_system,
                   cmd.target_component, cmd.command);
 
         if (cmd.target_system != _system_id || cmd.target_component < MAV_COMP_ID_CAMERA
@@ -515,7 +515,7 @@ void MavlinkServer::_handle_mavlink_message(mavlink_message_t *msg)
             this->_handle_set_camera_mode(cmd);
             break;
         case MAV_CMD_IMAGE_START_CAPTURE:
-            log_debug("MAV_CMD_IMAGE_START_CAPTURE");
+            log_info("MAV_CMD_IMAGE_START_CAPTURE");
             this->_handle_image_start_capture(cmd);
             break;
         case MAV_CMD_IMAGE_STOP_CAPTURE:

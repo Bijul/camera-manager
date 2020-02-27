@@ -132,6 +132,11 @@ int SerialConnection::open(struct serial_port sp)
         return -1;
     }
 
+    if (fcntl(_fd, F_SETFL, 0) == -1) {
+        log_error("fcntl failed (%m)");
+        return -1;
+    }
+
     struct termios tc;
     bzero(&tc, sizeof(tc));
 
@@ -152,13 +157,13 @@ int SerialConnection::open(struct serial_port sp)
 
     tc.c_cflag |= CLOCAL; // Without this a write() blocks indefinitely.
 
-    if (cfsetispeed(&tc, B57600) != 0) {
+    if (cfsetispeed(&tc, B4000000) != 0) {
         log_error("cfsetispeed failed: (%m)");
         close();
         return -1;
     }
 
-    if (cfsetospeed(&tc, B57600) != 0) {
+    if (cfsetospeed(&tc, B4000000) != 0) {
         log_error("cfsetospeed failed: (%m)");
         close();
         return -1;
