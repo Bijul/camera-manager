@@ -19,7 +19,7 @@ class SerialConnection : public Pollable {
 
         int open(struct serial_port sp);
         void close();
-        int define_from_baudrate(int baudrate)
+        int define_from_baudrate(int baudrate);
 
     protected:
         bool _can_read();
