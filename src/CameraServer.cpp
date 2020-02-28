@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <set>
+#include <gst/app/gstappsrc.h>
 
 #include "CameraServer.h"
 #include "log.h"
@@ -131,6 +132,7 @@ CameraServer::~CameraServer()
 void CameraServer::start()
 {
     log_info("CAMERA SERVER START");
+    gst_init(nullptr, nullptr);
     for (auto camComp : compList) {
         if (camComp->start())
             log_error("Error in starting camera component");
