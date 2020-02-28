@@ -571,7 +571,6 @@ GstRTSPServer *VideoStreamRtsp::createRtspServer()
         return mServer;
     } else {
         log_info("%s", __func__);
-        gst_init(nullptr, nullptr);
 
         /* create RTSP server */
         mServer = gst_rtsp_server_new();

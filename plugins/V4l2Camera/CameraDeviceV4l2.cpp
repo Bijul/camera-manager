@@ -57,7 +57,7 @@ CameraDevice::Status CameraDeviceV4l2::getInfo(struct CameraInfo &camInfo) const
     camInfo.resolution_h = 0;
     camInfo.resolution_v = 0;
     camInfo.lens_id = 0;
-    camInfo.flags = ~0u; // TODO :: Replace with flags
+    camInfo.flags = 255; // TODO :: Replace with flags
     camInfo.cam_definition_version = 1;
     if (!mCamDefURI.empty()) {
         if (sizeof(camInfo.cam_definition_uri) > mCamDefURI.size()) {
