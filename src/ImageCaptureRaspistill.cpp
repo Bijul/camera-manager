@@ -285,7 +285,7 @@ int ImageCaptureRaspistill::click()
         return 0;
 
     std::stringstream ss;
-    ss << "raspistill -t 0 -o " << mPath + "img_" << std::to_string(++imgCount) << "." + ext;
+    ss << "raspistill -t 1 -o " << mPath + "img_" << std::to_string(++imgCount) << "." + ext;
     ret = system(ss.str().c_str());
     return ret;
 }
