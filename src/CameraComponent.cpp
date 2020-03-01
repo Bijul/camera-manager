@@ -19,6 +19,7 @@
 
 #include "CameraComponent.h"
 #include "ImageCaptureGst.h"
+#include "ImageCaptureRaspistill.h"
 #include "VideoCaptureGst.h"
 #include "VideoStreamRtsp.h"
 #include "VideoStreamUdp.h"
@@ -267,9 +268,15 @@ int CameraComponent::startImageCapture(int interval, int count, capture_callback
 
     // check if settings are available
     if (mImgSetting)
-        mImgCap = std::make_shared<ImageCaptureGst>(mCamDev, *mImgSetting);
+    {
+        // mImgCap = std::make_shared<ImageCaptureGst>(mCamDev, *mImgSetting);
+        mImgCap = std::make_shared<ImageCaptureRaspistill>(mCamDev, *mImgSetting);
+    }
     else
-        mImgCap = std::make_shared<ImageCaptureGst>(mCamDev);
+    {
+        // mImgCap = std::make_shared<ImageCaptureGst>(mCamDev);
+        mImgCap = std::make_shared<ImageCaptureRaspistill>(mCamDev);
+    }
 
     if (!mImgPath.empty())
         mImgCap->setLocation(mImgPath);
