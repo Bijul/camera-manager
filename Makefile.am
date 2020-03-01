@@ -145,6 +145,8 @@ BASE_FILES = \
 	src/ImageCapture.h \
 	src/ImageCaptureGst.h \
 	src/ImageCaptureGst.cpp \
+	src/ImageCaptureRaspistill.h \
+	src/ImageCaptureRaspistill.cpp \
 	src/VideoStream.h \
 	src/VideoStreamUdp.h \
 	src/VideoStreamUdp.cpp \
