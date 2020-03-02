@@ -17,6 +17,8 @@
  */
 #include <assert.h>
 #include <sstream>
+#include <iomanip>
+
 #include <unistd.h>
 #include <vector>
 
