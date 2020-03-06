@@ -472,6 +472,12 @@ void MavlinkServer::_handle_heartbeat(mavlink_message_t *msg)
     }
 }
 
+void MavlinkServer::_handle_do_digicam_control()
+{
+    CameraComponent *tgtComp = getCameraComponent(MAV_COMP_ID_CAMERA);
+    tgtComp->startImageCapture(0, 1, nullptr);
+}
+
 void MavlinkServer::_handle_mavlink_message(mavlink_message_t *msg)
 {
     // log_debug("Message received: (sysid: %d compid: %d msgid: %d)", msg->sysid, msg->compid,
@@ -482,6 +488,11 @@ void MavlinkServer::_handle_mavlink_message(mavlink_message_t *msg)
         mavlink_msg_command_long_decode(msg, &cmd);
         log_info("Command received: (sysid: %d compid: %d msgid: %d)", cmd.target_system,
                   cmd.target_component, cmd.command);
+
+        if (cmd.target_system == _system_id && cmd.target_component == MAV_COMP_ID_AUTOPILOT1 && cmd.command == MAV_CMD_DO_DIGICAM_CONTROL) {
+            this->_handle_do_digicam_control();
+            return;
+        }
 
         if (cmd.target_system != _system_id || cmd.target_component < MAV_COMP_ID_CAMERA
             || cmd.target_component > MAV_COMP_ID_CAMERA6)

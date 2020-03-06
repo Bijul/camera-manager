@@ -68,6 +68,7 @@ private:
     void _handle_param_ext_set(mavlink_message_t *msg);
     void _handle_reset_camera_settings(mavlink_command_long_t &cmd);
     void _handle_heartbeat(mavlink_message_t *msg);
+    void _handle_do_digicam_control();
     bool _send_camera_capture_status(int compid);
     bool _send_mavlink_message(mavlink_message_t &msg);
     void _send_ack(int cmd, int comp_id, bool success);
