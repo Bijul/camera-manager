@@ -630,7 +630,7 @@ bool _heartbeat_cb(void *data)
          it != server->compIdToObj.end(); it++) {
         /* log_debug("Sending heartbeat for component :%d system_id:%d", it->first,
                   server->_system_id);*/
-        mavlink_msg_heartbeat_pack(server->_system_id, it->first, &msg, MAV_TYPE_GENERIC,
+        mavlink_msg_heartbeat_pack(server->_system_id, it->first, &msg, MAV_TYPE_CAMERA,
                                    MAV_AUTOPILOT_INVALID, MAV_MODE_PREFLIGHT, 0, MAV_STATE_ACTIVE);
         if (!server->_send_mavlink_message(msg))
             log_error("Sending HEARTBEAT failed.");
